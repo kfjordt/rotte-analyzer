@@ -1,39 +1,35 @@
-import pandas as pd
 import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
+from openpyxl import load_workbook
 
 import itertools
 
 RAT_COUNT = 10
 
 
-def read_data(path: str):
-    data = pd.read_excel(path)
+def read_data(path, sheet_name=0):
+    wb = load_workbook(path, data_only=True)
+    ws = wb[sheet_name] if isinstance(sheet_name, str) else wb.worksheets[sheet_name]
+    data = [[cell.value for cell in row] for row in ws.iter_rows()]
+
+    for merged_range in ws.merged_cells.ranges:
+        min_col, min_row, max_col, max_row = merged_range.bounds
+        value = ws.cell(row=min_row, column=min_col).value
+        for r in range(min_row, max_row + 1):
+            for c in range(min_col, max_col + 1):
+                data[r - 1][c - 1] = value
 
     resident_dict = {}
-
-    current_year = None
-    current_names = [None] * RAT_COUNT
-    for col_name, col_data in list(data.items())[1:]:
-        if "Unnamed" not in str(col_name):
-            current_year = col_name
-
-        month = col_data[0]
-        for name_idx, name in enumerate(col_data[1 : RAT_COUNT + 1]):
-            if "nan" not in str(name):
-                current_names[name_idx] = name
-                
-        for name in current_names:
-            if name is None or name == " ":
-                continue
-            if name not in resident_dict:
-                resident_dict[name] = []
-
-            resident_dict[name].append(f"{current_year} {month}")
-
-    return {k: list(set(v)) for k, v in resident_dict.items()}
-
+    columns = np.asarray(data).T[1:]
+    for column in columns:
+        month_label = f"{column[0]} {column[1]}"
+        residents = list([resident for resident in column[2:] if resident is not None])
+        for resident in residents:
+            if resident not in resident_dict:
+                resident_dict[resident] = []
+            resident_dict[resident].append(month_label)
+    return resident_dict
 
 def build_graph(months_by_residents: dict):
     unique_months = sorted(set([m for l in months_by_residents.values() for m in l]))
@@ -146,30 +142,34 @@ def plot_box_plot(data: list[float]):
 if __name__ == "__main__":
     # prepare data
     months_by_residents = read_data("rottedata.xlsx")
+
+    # for resident, months in sorted(months_by_residents.items()):
+    for resident, months in sorted(months_by_residents.items(), key=lambda x: len(x[0]), reverse=True)[:3]:
+        print(resident, months)
+
+    # print(months_by_residents)
     roomie_graph = build_graph(months_by_residents)
 
     # roomie related statistics
     roomie_count_by_resident = {r: len(roomies) for r, roomies in roomie_graph.items()}
     roomie_counts = list(roomie_count_by_resident.values())
 
-    print(f"Average roomie count: {np.mean(roomie_counts):.1f}")
-    print(f"Median roomie count: {np.median(roomie_counts):.1f}")
-
-    for resident, count in sorted(roomie_count_by_resident.items(), key=lambda x: x[1], reverse=True)[:3]:
-        print(f"{resident}: {count}")
-
     # residency period related statistics
     month_count_by_resident = {r: len(months) for r, months in months_by_residents.items()}
-    print(sorted(months_by_residents["Leonora Maria Meier-Nielsen"]))
     month_counts = list(month_count_by_resident.values())
 
-    print(f"Min residency period: {np.min(month_counts):.1f}")
-    print(f"Max residency period: {np.max(month_counts):.1f}")
-    print(f"Average residency period: {np.mean(month_counts):.1f}")
-    print(f"Median residency period: {np.median(month_counts):.1f}")
 
-    for resident, count in sorted(month_count_by_resident.items(), key=lambda x: x[1], reverse=True)[:3]:
-        print(f"{resident}: {count}")
+    # for resident, count in sorted(roomie_count_by_resident.items(), key=lambda x: x[1], reverse=True)[:3]:
+    #     print(f"{resident}: {count}")
+    # print(f"Average roomie count: {np.mean(roomie_counts):.1f}")
+    # print(f"Median roomie count: {np.median(roomie_counts):.1f}")
+    # print(f"Min residency period: {np.min(month_counts):.1f}")
+    # print(f"Max residency period: {np.max(month_counts):.1f}")
+    # print(f"Average residency period: {np.mean(month_counts):.1f}")
+    # print(f"Median residency period: {np.median(month_counts):.1f}")
+
+    # for resident, count in sorted(month_count_by_resident.items(), key=lambda x: x[1], reverse=True)[:3]:
+    #     print(f"{resident}: {count}")
 
     # plot_box_plot(month_counts)
-    plot_graph(roomie_graph)
+    # plot_graph(roomie_graph)
