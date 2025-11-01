@@ -2,6 +2,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
 from openpyxl import load_workbook
+from collections import Counter
 
 import itertools
 
@@ -31,6 +32,7 @@ def read_data(path, sheet_name=0):
             resident_dict[resident].append(month_label)
     return resident_dict
 
+
 def build_graph(months_by_residents: dict):
     unique_months = sorted(set([m for l in months_by_residents.values() for m in l]))
 
@@ -50,84 +52,64 @@ def build_graph(months_by_residents: dict):
 
 
 def plot_graph(roomie_graph: dict):
+    # Build graph
     G = nx.Graph()
     for resident, roommates in roomie_graph.items():
         for roommate in roommates:
             G.add_edge(resident, roommate)
 
-
-    # Total nodes and edges
-    num_nodes = G.number_of_nodes()
-    num_edges = G.number_of_edges()
-
-    # Compute all shortest paths
+    # Compute stats
     all_paths = dict(nx.all_pairs_shortest_path(G))
-
-    # Flatten into lengths and track longest path
-    longest_length = 0
-    longest_path = []
-
-    lengths = []
+    lengths, longest_path, longest_length = [], [], 0
     for u, v in itertools.combinations(G.nodes, 2):
         if v in all_paths[u]:
-            path = all_paths[u][v]
-            path_len = len(path) - 1  # number of edges
+            path_len = len(all_paths[u][v]) - 1
             lengths.append(path_len)
             if path_len > longest_length:
-                longest_length = path_len
-                longest_path = path
+                longest_length, longest_path = path_len, all_paths[u][v]
+    avg_length = sum(lengths) / len(lengths) if lengths else 0
 
-    # Average length
-    average_length = sum(lengths) / len(lengths)
+    print(f"Nodes: {G.number_of_nodes()}, Edges: {G.number_of_edges()}")
+    print(f"Longest path length: {longest_length}, Path: {longest_path}")
+    print(f"Average path length: {avg_length:.2f}")
 
-    print("Total nodes:", num_nodes)
-    print("Total edges:", num_edges)
-    print("Longest path length:", longest_length)
-    print("Longest path nodes:", longest_path)
-    print("Average path length:", average_length)
     pos = nx.kamada_kawai_layout(G)
-
-    # Node properties
     degrees = dict(G.degree())
     node_sizes = [400 + 150 * degrees[n] for n in G.nodes()]
     node_colors = [degrees[n] for n in G.nodes()]
 
-    # A3 portrait page (in inches)
-    plt.figure(figsize=(11.7, 16.5), facecolor="white")
-    ax = plt.gca()
-    ax.set_facecolor("white")
+    # --- Helper for drawing ---
+    def draw(save_path, with_labels=False, fmt="png"):
+        plt.figure(figsize=(14, 8), facecolor="white")  # horizontal aspect ratio 8/14
+        ax = plt.gca()
+        ax.set_facecolor("white")
+        nx.draw_networkx_edges(G, pos, alpha=0.25, width=1.0, edge_color="gray")
+        nodes = nx.draw_networkx_nodes(
+            G,
+            pos,
+            node_color=node_colors,
+            cmap=plt.cm.Oranges,
+            node_size=node_sizes,
+            edgecolors="black",
+            linewidths=0.4,
+            alpha=0.95,
+        )
+        if with_labels:
+            nx.draw_networkx_labels(G, pos, font_size=8, font_weight="bold", font_color="red")
+        cbar = plt.colorbar(nodes, shrink=0.8, pad=0.02)
+        cbar.set_label("Number of Roommates", color="black", fontsize=10)
+        plt.setp(plt.getp(cbar.ax.axes, "yticklabels"), color="black")
+        plt.title("Roommate Network", fontsize=18, fontweight="bold", color="black", pad=20)
+        plt.axis("off")
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=300, transparent=True, format=fmt)
+        plt.close()
 
-    # Draw edges
-    nx.draw_networkx_edges(G, pos, alpha=0.25, width=1.0, edge_color="gray")
+    # PowerPoint version (SVG, no labels)
+    draw("graph.svg", with_labels=False, fmt="svg")
 
-    # Draw nodes
-    nodes = nx.draw_networkx_nodes(
-        G,
-        pos,
-        node_color=node_colors,
-        cmap=plt.cm.Oranges,  # better contrast on white
-        node_size=node_sizes,
-        edgecolors="black",
-        linewidths=0.4,
-        alpha=0.95,
-    )
-
-    # Labels
-    nx.draw_networkx_labels(G, pos, font_size=8, font_weight="bold", font_color="red")
-
-    # Colorbar with black text
-    cbar = plt.colorbar(nodes, shrink=0.8, pad=0.02)
-    cbar.set_label("Number of Roommates", color="black", fontsize=10)
-    plt.setp(plt.getp(cbar.ax.axes, "yticklabels"), color="black")
-
-    # Title and layout
-    plt.title("Roommate Network", fontsize=18, fontweight="bold", color="black", pad=20)
-    plt.axis("off")
-    plt.tight_layout()
-    
-    # Save to PNG with transparent background
-    plt.savefig("graph.png", dpi=300, transparent=True)
-    plt.close()
+    # PNG version (with labels)
+    draw("graph_labeled.png", with_labels=True, fmt="png")
 
 
 def plot_box_plot(data: list[float]):
@@ -139,13 +121,57 @@ def plot_box_plot(data: list[float]):
     # plt.savefig("boxplot.pdf")
 
 
+def plot_histograms(move_in_months, move_out_months):
+    # Normalize month abbreviations
+    month_map = {
+        "Jan": "January",
+        "Feb": "February",
+        "Mar": "March",
+        "Apr": "April",
+        "Maj": "May",
+        "May": "May",
+        "Jun": "June",
+        "Jul": "July",
+        "Aug": "August",
+        "Sep": "September",
+        "Okt": "October",
+        "Oct": "October",
+        "Nov": "November",
+        "Dec": "December",
+    }
+
+    move_in = [month_map.get(m, m) for m in move_in_months]
+    move_out = [month_map.get(m, m) for m in move_out_months]
+
+    months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+
+    in_counts = Counter(move_in)
+    out_counts = Counter(move_out)
+
+    in_values = [in_counts.get(m, 0) for m in months]
+    out_values = [out_counts.get(m, 0) for m in months]
+    max_count = max(max(in_values), max(out_values))
+
+    fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True, sharey=True)
+
+    axes[0].bar(months, in_values, color="steelblue", alpha=0.7)
+    axes[0].set_title("Move In by Month")
+    axes[0].set_ylabel("Count")
+    axes[0].set_ylim(0, max_count)
+
+    axes[1].bar(months, out_values, color="salmon", alpha=0.7)
+    axes[1].set_title("Move Out by Month")
+    axes[1].set_ylabel("Count")
+    axes[1].set_ylim(0, max_count)
+
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+
+
 if __name__ == "__main__":
     # prepare data
     months_by_residents = read_data("rottedata.xlsx")
-
-    # for resident, months in sorted(months_by_residents.items()):
-    for resident, months in sorted(months_by_residents.items(), key=lambda x: len(x[0]), reverse=True)[:3]:
-        print(resident, months)
 
     # print(months_by_residents)
     roomie_graph = build_graph(months_by_residents)
@@ -157,6 +183,9 @@ if __name__ == "__main__":
     # residency period related statistics
     month_count_by_resident = {r: len(months) for r, months in months_by_residents.items()}
     month_counts = list(month_count_by_resident.values())
+
+    move_in_months = [months[0][-3:] for months in months_by_residents.values()]
+    move_out_months = [months[-1][-3:] for months in months_by_residents.values()]
 
 
     # for resident, count in sorted(roomie_count_by_resident.items(), key=lambda x: x[1], reverse=True)[:3]:
@@ -171,5 +200,6 @@ if __name__ == "__main__":
     # for resident, count in sorted(month_count_by_resident.items(), key=lambda x: x[1], reverse=True)[:3]:
     #     print(f"{resident}: {count}")
 
+    # plot_histograms(move_in_months, move_out_months)
     # plot_box_plot(month_counts)
-    # plot_graph(roomie_graph)
+    plot_graph(roomie_graph)
