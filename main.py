@@ -54,8 +54,14 @@ def build_graph(months_by_residents: dict):
 def plot_graph(roomie_graph: dict):
     # Build graph
     G = nx.Graph()
+    print(roomie_graph)
     for resident, roommates in roomie_graph.items():
+        
+        if resident == " ":
+            continue
         for roommate in roommates:
+            if roommate == " ":
+                continue
             G.add_edge(resident, roommate)
 
     # Compute stats
@@ -80,7 +86,7 @@ def plot_graph(roomie_graph: dict):
 
     # --- Helper for drawing ---
     def draw(save_path, with_labels=False, fmt="png"):
-        plt.figure(figsize=(14, 8), facecolor="white")  # horizontal aspect ratio 8/14
+        plt.figure(figsize=(16, 8), facecolor="white")  # horizontal aspect ratio 8/14
         ax = plt.gca()
         ax.set_facecolor("white")
         nx.draw_networkx_edges(G, pos, alpha=0.25, width=1.0, edge_color="gray")
